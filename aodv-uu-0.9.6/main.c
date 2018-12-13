@@ -1,4 +1,4 @@
-/*****************************************************************************
+qq.com/*****************************************************************************
  *
  * Copyright (C) 2001 Uppsala University and Ericsson AB.
  *
@@ -16,7 +16,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
- * Author: Erik Nordstr�m, <erik.nordstrom@it.uu.se>
+ * Author: Erik Nordström, <erik.nordstrom@it.uu.se>
  *
  *****************************************************************************/
 #include <stdio.h>
@@ -122,7 +122,7 @@ void usage(int status)
 	 "-R, --rate-limit        Toggle rate limiting of RREQs and RERRs (default ON).\n"
 	 "-q, --quality-threshold Set a minimum signal quality threshold for control packets.\n"
 	 "-V, --version           Show version.\n\n"
-	 "Erik Nordstr�m, <erik.nordstrom@it.uu.se>\n\n",
+	 "Erik Nordström, <erik.nordstrom@it.uu.se>\n\n",
 	 progname, AODV_LOG_PATH, AODV_RT_LOG_PATH);
 
     exit(status);
@@ -488,6 +488,7 @@ int main(int argc, char **argv)
     struct timespec timeout_spec;
     struct sigaction sigact;
     sigset_t mask, origmask;
+    /* 初始化相关信息*/
 
     /* Remember the name of the executable... */
     progname = strrchr(argv[0], '/');
@@ -511,194 +512,10 @@ int main(int argc, char **argv)
     sigaddset(&mask, SIGTERM);
     sigaddset(&mask, SIGHUP);
     sigaddset(&mask, SIGINT);
+    /* 初始化信号*/
     /* Only capture segmentation faults when we are not debugging... */
 #ifndef DEBUG
     sigaddset(&mask, SIGSEGV);
 #endif
 
-    /* Block the signals we are watching here so that we can
-     * handle them in pselect instead. */
-    sigprocmask(SIG_BLOCK, &mask, &origmask);
-
-    /* Parse command line: */
-    while (1) {
-	int opt;
-
-	opt = getopt_long(argc, argv, "i:fjln:dghoq:r:s:uwxDLRV", longopts, 0);
-
-	if (opt == EOF)
-	    break;
-
-	switch (opt) {
-	case 0:
-	    break;
-	case 'd':
-	    debug = 0;
-	    daemonize = 1;
-	    break;
-	case 'f':
-	    llfeedback = 1;
-	    active_route_timeout = ACTIVE_ROUTE_TIMEOUT_LLF;
-	    break;
-	case 'g':
-	    rreq_gratuitous = !rreq_gratuitous;
-	    break;
-	case 'i':
-	    ifname = optarg;
-	    break;
-	case 'j':
-	    hello_jittering = !hello_jittering;
-	    break;
-	case 'l':
-	    log_to_file = !log_to_file;
-	    break;
-	case 'n':
-	    if (optarg && isdigit(*optarg)) {
-		receive_n_hellos = atoi(optarg);
-		if (receive_n_hellos < 2) {
-		    fprintf(stderr, "-n should be at least 2!\n");
-		    exit(-1);
-		}
-	    }
-	    break;
-	case 'o':
-	    optimized_hellos = !optimized_hellos;
-	    break;
-	case 'q':
-	    if (optarg && isdigit(*optarg))
-		qual_threshold = atoi(optarg);
-	    break;
-	case 'r':
-	    if (optarg && isdigit(*optarg))
-		rt_log_interval = atof(optarg) * 1000;
-	    break;
-	case 'u':
-	    unidir_hack = !unidir_hack;
-	    break;
-	case 'w':
-	    internet_gw_mode = !internet_gw_mode;
-	    break;
-	case 'x':
-	    expanding_ring_search = !expanding_ring_search;
-	    break;
-	case 'L':
-	    local_repair = !local_repair;
-	    break;
-	case 'D':
-	    wait_on_reboot = !wait_on_reboot;
-	    break;
-	case 'R':
-	    ratelimit = !ratelimit;
-	    break;
-	case 'V':
-	    printf
-		("\nAODV-UU v%s, %s � Uppsala University & Ericsson AB.\nAuthor: Erik Nordstr�m, <erik.nordstrom@it.uu.se>\n\n",
-		 AODV_UU_VERSION, DRAFT_VERSION);
-	    exit(0);
-	    break;
-	case '?':
-	case ':':
-	    exit(0);
-	default:
-	    usage(0);
-	}
-    }
-    /* Check that we are running as root */
-    if (geteuid() != 0) {
-	fprintf(stderr, "must be root\n");
-	exit(1);
-    }
-
-    /* Detach from terminal */
-    if (daemonize) {
-	if (fork() != 0)
-	    exit(0);
-	/* Close stdin, stdout and stderr... */
-	/*  close(0); */
-	close(1);
-	close(2);
-	setsid();
-    }
-    /* Make sure we cleanup at exit... */
-    atexit((void *) &cleanup);
-
-    /* Initialize data structures and services... */
-    rt_table_init();
-    log_init();
-    /*   packet_queue_init(); */
-    host_init(ifname);
-    /*   packet_input_init(); */
-    nl_init();
-    nl_send_conf_msg();
-    aodv_socket_init();
-#ifdef LLFEEDBACK
-    if (llfeedback) {
-	llf_init();
-    }
-#endif
-
-    /* Set sockets to watch... */
-    FD_ZERO(&readers);
-    for (i = 0; i < nr_callbacks; i++) {
-	FD_SET(callbacks[i].fd, &readers);
-	if (callbacks[i].fd >= nfds)
-	    nfds = callbacks[i].fd + 1;
-    }
-
-    /* Set the wait on reboot timer... */
-    if (wait_on_reboot) {
-	timer_init(&worb_timer, wait_on_reboot_timeout, &wait_on_reboot);
-	timer_set_timeout(&worb_timer, DELETE_PERIOD);
-	alog(LOG_NOTICE, 0, __FUNCTION__,
-	     "In wait on reboot for %d milliseconds. Disable with \"-D\".",
-	     DELETE_PERIOD);
-    }
-
-    /* Schedule the first Hello */
-    if (!optimized_hellos && !llfeedback)
-	hello_start();
-
-    if (rt_log_interval)
-	log_rt_table_init();
-
-    while (1) {
-	memcpy((char *) &rfds, (char *) &readers, sizeof(rfds));
-
-	timeout = timer_age_queue();
-	
-	timeout_spec.tv_sec = timeout->tv_sec;
-	timeout_spec.tv_nsec = timeout->tv_usec * 1000;
-
-	if ((n = pselect(nfds, &rfds, NULL, NULL, &timeout_spec, &origmask)) < 0) {
-	    if (errno != EINTR)
-		alog(LOG_WARNING, errno, __FUNCTION__,
-		     "Failed select (main loop)");
-	    continue;
-	}
-
-	if (n > 0) {
-	    for (i = 0; i < nr_callbacks; i++) {
-		if (FD_ISSET(callbacks[i].fd, &rfds)) {
-		    /* We don't want any timer SIGALRM's while executing the
-		       callback functions, therefore we block the timer... */
-		    (*callbacks[i].func) (callbacks[i].fd);
-		}
-	    }
-	}
-    }				/* Main loop */
-    return 0;
-}
-
-static void cleanup(void)
-{
-    DEBUG(LOG_DEBUG, 0, "CLEANING UP!");
-    rt_table_destroy();
-    aodv_socket_cleanup();
-#ifdef LLFEEDBACK
-    if (llfeedback)
-	llf_cleanup();
-#endif
-    log_cleanup();
-    nl_cleanup();
-    remove_modules();
-}
+    /* Block the signals we are watching here
