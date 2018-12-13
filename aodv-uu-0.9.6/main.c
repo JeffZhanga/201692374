@@ -519,3 +519,188 @@ int main(int argc, char **argv)
 #endif
 
     /* Block the signals we are watching here
+     *改为用pselect处理它们。* /
+    sigprocmask（SIG_BLOCK，＆mask，＆origmask）;
+
+    / *解析命令行：* /
+    而（1）{
+	int opt;
+
+	opt = getopt_long（argc，argv，“ i：fjln：dghoq：r：s：uwxDLRV ”，longopts，0）;
+
+	if（opt == EOF）
+	    打破 ;
+
+	switch（opt）{
+	案例 0：
+	    打破 ;
+	案例 ' d '：
+	    debug = 0 ;
+	    daemonize = 1 ;
+	    打破 ;
+	案例 ' f '：
+	    llfeedback = 1 ;
+	    active_route_timeout = ACTIVE_ROUTE_TIMEOUT_LLF;
+	    打破 ;
+	案例 ' g '：
+	    rreq_gratuitous =！rreq_gratuitous;
+	    打破 ;
+	案例 '我'：
+ifname 	    = optarg ;
+	    打破 ;
+	案例 ' j '：
+	    hello_jittering =！hello_jittering;
+	    打破 ;
+	案例 ' l '：
+	    log_to_file =！log_to_file;
+	    打破 ;
+	案例 ' n '：
+	    if（optarg && isdigit（* optarg））{
+		receive_n_hellos = atoi（optarg）;
+		if（receive_n_hellos < 2）{
+		    fprintf（stderr，“ -  n应该至少为2！\ n ”）;
+		    退出（ - 1）;
+		}
+	    }
+	    打破 ;
+	案例 ' o '：
+	    optimized_hellos =！optimized_hellos;
+	    打破 ;
+	案例 ' q '：
+	    if（optarg && isdigit（* optarg））
+		qual_threshold = atoi（optarg）;
+	    打破 ;
+	案例 ' r '：
+	    if（optarg && isdigit（* optarg））
+		rt_log_interval = atof（optarg）* 1000 ;
+	    打破 ;
+	案例 '你'：
+	    unidir_hack =！unidir_hack;
+	    打破 ;
+	案例 ' w '：
+	    internet_gw_mode =！internet_gw_mode;
+	    打破 ;
+	案例 ' x '：
+	    expanding_ring_search =！expanding_ring_search;
+	    打破 ;
+	案例 ' L '：
+	    local_repair =！local_repair;
+	    打破 ;
+	案例 ' D '：
+	    wait_on_reboot =！wait_on_reboot;
+	    打破 ;
+	案例 ' R '：
+	    ratelimit =！ratelimit;
+	    打破 ;
+	案例 ' V '：
+	    的printf
+		（“ \ n AODV-UU v ％s，％s ©乌普萨拉大学和爱立信AB。\ n作者：ErikNordström，<erik.nordstrom@it.uu.se> \ n \ n ”，
+		 AODV_UU_VERSION，DRAFT_VERSION）;
+	    退出（0）;
+	    打破 ;
+	案件 '？'：
+	案例 '：'：
+	    退出（0）;
+	默认值：
+	    用法（0）;
+	}
+    }
+    / *检查我们是否以root身份运行* /
+    if（geteuid（）！= 0）{
+	fprintf（stderr，“必须是root \ n ”）;
+	退出（1）;
+    }
+
+    / *从终端分离* /
+    if（daemonize）{
+	if（fork（）！= 0）
+	    退出（0）;
+	/ *关闭stdin，stdout和stderr ... * /
+	/ *   close（0）; * /
+	关闭（1）;
+	关闭（2）;
+	setsid（）;
+    }
+    / *确保我们在退出时清理... * /
+    atexit（（void *）＆cleanup）;
+
+    / *初始化数据结构和服务...... * /
+    rt_table_init（）;
+    log_init（）;
+    / *    packet_queue_init（）; * /
+    host_init（ifname）;
+    / *    packet_input_init（）; * /
+    nl_init（）;
+    nl_send_conf_msg（）;
+    aodv_socket_init（）;
+＃IFDEF LLFEEDBACK
+    if（llfeedback）{
+	llf_init（）;
+    }
+＃ENDIF
+
+    / *设置插座供观看...... * /
+    FD_ZERO（和读者）;
+    for（i = 0 ; i <nr_callbacks; i ++）{
+	FD_SET（回调[i] .fd，和读者）;
+	if（callbacks [i] .fd > = nfds）
+	    nfds = callbacks [i]。fd + 1 ;
+    }
+
+    / *设置重启计时器的等待... * /
+    if（wait_on_reboot）{
+	timer_init（＆worb_timer，wait_on_reboot_timeout，＆wait_on_reboot）;
+	timer_set_timeout（＆worb_timer，DELETE_PERIOD）;
+	alog（LOG_NOTICE，0，__ FUNCTION__，
+	     “等待重启时％d毫秒。禁用\” - D \“。”，
+	     DELETE_PERIOD）;
+    }
+
+    / *安排第一个Hello * /
+    if（！optimized_hellos &&！llfeedback）
+	hello_start（）;
+
+    if（rt_log_interval）
+	log_rt_table_init（）;
+
+    而（1）{
+	memcpy（（char *）＆rfds，（char *）＆readers，sizeof（rfds））;
+
+	timeout = timer_age_queue（）;
+	
+	timeout_spec。tv_sec = timeout-> tv_sec ;
+	timeout_spec。tv_nsec = timeout-> tv_usec * 1000 ;
+
+	if（（n = pselect（nfds，＆rfds，NULL，NULL，＆timeout_spec，＆origmask））< 0）{
+	    if（错误！= EINTR）
+		alog（LOG_WARNING，errno，__ FUNCTION__，
+		     “选择失败（主循环）” ;
+	    继续 ;
+	}
+
+	if（n> 0）{
+	    for（i = 0 ; i <nr_callbacks; i ++）{
+		如果（FD_ISSET（回调[i]中。FD，＆RFDS））{
+		    / *我们在执行时不需要任何计时器SIGALRM
+		       回调函数，因此我们阻止计时器... * /
+		    （* callbacks [i] .func）（callbacks [i] .fd）;
+		}
+	    }
+	}
+    }				 / *主循环* /
+    返回 0 ;
+}
+
+静态 空 清理（void）
+{
+    DEBUG（LOG_DEBUG，0，“清理！”）;
+    rt_table_destroy（）;
+    aodv_socket_cleanup（）;
+＃IFDEF LLFEEDBACK
+    if（llfeedback）
+	llf_cleanup（）;
+＃ENDIF
+    log_cleanup（）;
+    nl_cleanup（）;
+    remove_modules（）;
+}
